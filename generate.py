@@ -11,6 +11,7 @@ import json, html, datetime, os, subprocess, sys
 BASE = os.path.dirname(os.path.abspath(__file__))
 ARCHIVE = os.path.join(BASE, 'archive')
 MANIFEST = os.path.join(ARCHIVE, 'manifest.json')
+SEEN = os.path.join(ARCHIVE, 'seen.json')
 INDEX = os.path.join(BASE, 'index.html')
 
 UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
@@ -51,7 +52,7 @@ def pull(since_iso):
                          capture_output=True, text=True, timeout=60).stdout
     return json.loads(out)
 
-def gen_report(items, date_str):
+def gen_report(items, date_str, win_str=''):
     groups = {k: [] for k, _, _ in CAT_CONFIG}
     for it in items:
         cat = it.get('category') or 'other'
@@ -151,7 +152,7 @@ def gen_report(items, date_str):
 <div class="wrap">
   <header>
     <h1>🚀 AI HOT 速递</h1>
-    <div class="sub">{date_str} · 最近 24 小时精选 · 共 {total} 条 · 按发布时间倒序</div>
+    <div class="sub">{date_str} · {win_str} · 共 {total} 条 · 按发布时间倒序</div>
     <div class="win">生成于 {gen_time}</div>
   </header>
   {sections}
@@ -251,15 +252,54 @@ MANIFEST.forEach(it => {{
 </body>
 </html>'''
 
+def load_seen():
+    if os.path.exists(SEEN):
+        try:
+            with open(SEEN, encoding='utf-8') as f:
+                return json.load(f)
+        except Exception:
+            return {}
+    return {}
+
+def save_seen(seen):
+    with open(SEEN, 'w', encoding='utf-8') as f:
+        json.dump(seen, f, ensure_ascii=False, indent=2)
+
 def main():
     os.makedirs(ARCHIVE, exist_ok=True)
     bj_now = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=8)))
     date_str = bj_now.strftime('%Y-%m-%d')
-    since = (bj_now - datetime.timedelta(hours=24)).astimezone(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
-    data = pull(since)
-    items = data.get('items', [])
+    # 固定窗口：北京时间 昨日 08:00 ~ 当日 08:00
+    end_bj = bj_now.replace(hour=8, minute=0, second=0, microsecond=0)
+    start_bj = end_bj - datetime.timedelta(hours=24)
+    since_iso = start_bj.astimezone(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+    data = pull(since_iso)
+    min_dt = datetime.datetime.min.replace(tzinfo=start_bj.tzinfo)
+    # 客户端兜底：严格落在窗口内
+    items = [it for it in data.get('items', [])
+             if start_bj <= (bj(it.get('publishedAt')) or min_dt) < end_bj]
+    # 按发布时间倒序
+    items.sort(key=lambda it: bj(it.get('publishedAt')) or min_dt, reverse=True)
+    # 跨天去重：仅与「此前各日期」已收录的 id 比对（当前日期不去重自己，保证可重跑幂等）
+    seen = load_seen()
+    prev_seen = set()
+    for d, ids in seen.items():
+        if d != date_str:
+            prev_seen.update(ids)
+    kept, local = [], set()
+    for it in items:
+        kid = it.get('id') or it.get('url') or ''
+        if not kid or kid in prev_seen or kid in local:
+            continue
+        kept.append(it)
+        local.add(kid)
+    items = kept
+    win_str = f'北京时间 {start_bj.strftime("%Y-%m-%d")} 08:00 – {end_bj.strftime("%Y-%m-%d")} 08:00 精选'
     with open(os.path.join(ARCHIVE, f'{date_str}.html'), 'w', encoding='utf-8') as f:
-        f.write(gen_report(items, date_str))
+        f.write(gen_report(items, date_str, win_str))
+    # 记录当日去重指纹
+    seen[date_str] = list(local)
+    save_seen(seen)
     m = []
     if os.path.exists(MANIFEST):
         with open(MANIFEST, encoding='utf-8') as f:
