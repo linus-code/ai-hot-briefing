@@ -137,20 +137,20 @@ INDEX_STYLE = """
   li a.active .c { color:rgba(255,255,255,.85); }
   li a .t { font-size:11px; color:var(--accent); margin-left:6px; }
   li a.active .t { color:#fff; }
+  .picker { display:none; }
   @media (max-width:820px) {
     body { padding:16px 12px; }
     header { padding:16px 18px; }
     header h1 { font-size:20px; }
-    main { flex-direction:column; gap:12px; }
+    main { flex-direction:column; gap:12px; align-items:stretch; }
     .viewer-wrap { order:2; }
-    aside { order:1; width:100%; position:sticky; top:0; z-index:20; max-height:none;
-      overflow-x:auto; overflow-y:hidden; padding:10px 12px; -webkit-overflow-scrolling:touch;
-      background:var(--bg); border-radius:10px; box-shadow:var(--shadow); }
-    .aside-head { display:none; }
-    ul { flex-direction:row; flex-wrap:nowrap; gap:6px; }
-    li { flex:none; }
-    li a { white-space:nowrap; padding:7px 12px; }
-    li a .c { float:none; margin-left:6px; }
+    .picker { display:block; order:1; position:sticky; top:0; z-index:20; width:100%;
+      padding:11px 38px 11px 14px; font-size:15px; color:var(--text); font-family:inherit;
+      background-color:var(--card); border:1px solid var(--border); border-radius:10px;
+      box-shadow:var(--shadow); -webkit-appearance:none; appearance:none; cursor:pointer;
+      background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);
+      background-position:calc(100% - 18px) 50%,calc(100% - 13px) 50%; background-size:5px 5px,5px 5px; background-repeat:no-repeat; }
+    aside { display:none; }
     iframe { height:78vh; }
   }
 """
@@ -282,6 +282,7 @@ def gen_index(manifest):
     <div class="sub">每日 AI 资讯精选 · 默认展示最新一期，点击右侧日期查看历史</div>
   </header>
   <main>
+    <select id="picker" class="picker" aria-label="选择日期"></select>
     <div class="viewer-wrap"><iframe id="viewer" src="" title="简报预览"></iframe></div>
     <aside>
       <div class="aside-head">历史归档</div>
@@ -309,6 +310,15 @@ MANIFEST.forEach(it => {{
   a.onclick = (e) => {{ e.preventDefault(); viewer.src = a.href; setActive(a); }};
   li.appendChild(a); list.appendChild(li);
 }});
+const picker = document.getElementById('picker');
+MANIFEST.forEach(it => {{
+  const o = document.createElement('option');
+  o.value = 'archive/' + it.date + '.html';
+  o.textContent = it.date + (it.date === today ? ' · 今天' : '') + ' · ' + it.count + ' 条';
+  if (it.date === def.date) o.selected = true;
+  picker.appendChild(o);
+}});
+picker.onchange = () => {{ viewer.src = picker.value; }};
 </script>
 </body>
 </html>'''
