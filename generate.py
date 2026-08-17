@@ -15,7 +15,7 @@ SEEN = os.path.join(ARCHIVE, 'seen.json')
 INDEX = os.path.join(BASE, 'index.html')
 
 UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-API = "https://aihot.virxact.com/api/public/items?mode=selected&since={since}&take=50"
+API = "https://aihot.virxact.com/api/public/items?mode={mode}&since={since}&take=50"
 
 CAT_CONFIG = [
     ('ai-models',   '模型发布 / 更新', '#6366f1'),
@@ -24,6 +24,11 @@ CAT_CONFIG = [
     ('paper',       '论文研究',       '#10b981'),
     ('tip',         '技巧与 观点',    '#ec4899'),
 ]
+OTHER_LABEL = '其他 / 未分类'
+OTHER_COLOR = '#71717a'
+FALLBACK_THRESHOLD = 5     # 精选不足此数时，回退 mode=all 补充同窗内未精选条目
+FALLBACK_MODE = 'all'
+FALLBACK_CAP = 30          # 兜底后条目总数上限（按时间倒序截断）
 
 def bj(dtstr):
     if not dtstr:
@@ -46,18 +51,39 @@ def human(dt):
         return f'昨天 {dt.strftime("%H:%M")}'
     return dt.strftime('%m/%d %H:%M')
 
-def pull(since_iso):
-    url = API.format(since=since_iso)
+def pull(since_iso, mode='selected'):
+    url = API.format(mode=mode, since=since_iso)
     out = subprocess.run(['curl', '-s', '-H', f'User-Agent: {UA}', url],
                          capture_output=True, text=True, timeout=60).stdout
     return json.loads(out)
 
-def gen_report(items, date_str, win_str=''):
+def render_card(it, n):
+    title = html.escape(it.get('title') or it.get('title_en') or '(无标题)')
+    url = html.escape(it.get('url') or '#')
+    source = html.escape(it.get('source') or '未知来源')
+    summary = html.escape(it.get('summary') or '')
+    dt = bj(it.get('publishedAt'))
+    rel = human(dt)
+    abt = dt.strftime('%Y-%m-%d %H:%M') if dt else ''
+    return f'''
+        <article class="card">
+          <div class="num">{n}</div>
+          <div class="card-body">
+            <a class="title" href="{url}" target="_blank" rel="noopener noreferrer">{title}</a>
+            <div class="meta"><span class="source">{source}</span><span class="dot">·</span><span class="time" title="{abt}">{rel}</span></div>
+            <p class="summary">{summary}</p>
+          </div>
+        </article>'''
+
+def gen_report(items, date_str, win_str='', note=''):
     groups = {k: [] for k, _, _ in CAT_CONFIG}
+    other = []
     for it in items:
         cat = it.get('category') or 'other'
         if cat in groups:
             groups[cat].append(it)
+        else:
+            other.append(it)
     total = len(items)
     gen_time = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=8))).strftime('%Y-%m-%d %H:%M')
     counter = 0
@@ -69,28 +95,27 @@ def gen_report(items, date_str, win_str=''):
         cards = ''
         for it in lst:
             counter += 1
-            title = html.escape(it.get('title') or it.get('title_en') or '(无标题)')
-            url = html.escape(it.get('url') or '#')
-            source = html.escape(it.get('source') or '未知来源')
-            summary = html.escape(it.get('summary') or '')
-            dt = bj(it.get('publishedAt'))
-            rel = human(dt)
-            abt = dt.strftime('%Y-%m-%d %H:%M') if dt else ''
-            cards += f'''
-        <article class="card">
-          <div class="num">{counter}</div>
-          <div class="card-body">
-            <a class="title" href="{url}" target="_blank" rel="noopener noreferrer">{title}</a>
-            <div class="meta"><span class="source">{source}</span><span class="dot">·</span><span class="time" title="{abt}">{rel}</span></div>
-            <p class="summary">{summary}</p>
-          </div>
-        </article>'''
+            cards += render_card(it, counter)
         sections += f'''
     <section class="sec">
       <div class="sec-head" style="--c:{color}">
         <span class="badge" style="background:{color}"></span>
         <h2>{label}</h2>
         <span class="sec-count">{len(lst)}</span>
+      </div>
+      <div class="cards">{cards}</div>
+    </section>'''
+    if other:
+        cards = ''
+        for it in other:
+            counter += 1
+            cards += render_card(it, counter)
+        sections += f'''
+    <section class="sec">
+      <div class="sec-head" style="--c:{OTHER_COLOR}">
+        <span class="badge" style="background:{OTHER_COLOR}"></span>
+        <h2>{OTHER_LABEL}</h2>
+        <span class="sec-count">{len(other)}</span>
       </div>
       <div class="cards">{cards}</div>
     </section>'''
@@ -117,11 +142,11 @@ def gen_report(items, date_str, win_str=''):
   body {{ font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;
     background:var(--bg); color:var(--text); line-height:1.6; -webkit-font-smoothing:antialiased; padding:32px 16px 64px; }}
   .wrap {{ max-width:860px; margin:0 auto; }}
-  header {{ background:linear-gradient(135deg,var(--accent),#8b5cf6); color:#fff; border-radius:16px;
-    padding:28px 28px 24px; margin-bottom:28px; box-shadow:var(--shadow); }}
-  header h1 {{ font-size:26px; font-weight:800; letter-spacing:.5px; }}
-  header .sub {{ margin-top:8px; font-size:14px; opacity:.92; }}
-  header .win {{ margin-top:10px; font-size:13px; opacity:.85; font-family:"SF Mono",ui-monospace,monospace; }}
+  header {{ background:var(--bg2); border:1px solid var(--border); border-radius:12px;
+    padding:16px 20px; margin-bottom:24px; box-shadow:var(--shadow); }}
+  header h1 {{ font-size:18px; font-weight:700; letter-spacing:.3px; }}
+  header .sub {{ margin-top:6px; font-size:13px; color:var(--muted); }}
+  header .win {{ margin-top:4px; font-size:12px; color:var(--faint); font-family:"SF Mono",ui-monospace,monospace; }}
   .sec {{ margin-bottom:30px; }}
   .sec-head {{ display:flex; align-items:center; gap:10px; margin-bottom:14px; padding-bottom:8px; border-bottom:2px solid var(--border); }}
   .badge {{ width:10px; height:22px; border-radius:4px; display:inline-block; }}
@@ -151,8 +176,8 @@ def gen_report(items, date_str, win_str=''):
 <body>
 <div class="wrap">
   <header>
-    <h1>🚀 AI HOT 速递</h1>
-    <div class="sub">{date_str} · {win_str} · 共 {total} 条 · 按发布时间倒序</div>
+    <h1>AI HOT 速递 · {date_str}</h1>
+    <div class="sub">{win_str} · 共 {total} 条{ (' · ' + note) if note else '' } · 按发布时间倒序</div>
     <div class="win">生成于 {gen_time}</div>
   </header>
   {sections}
@@ -273,13 +298,39 @@ def main():
     end_bj = bj_now.replace(hour=8, minute=0, second=0, microsecond=0)
     start_bj = end_bj - datetime.timedelta(hours=24)
     since_iso = start_bj.astimezone(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
-    data = pull(since_iso)
+    data = pull(since_iso, 'selected')
     min_dt = datetime.datetime.min.replace(tzinfo=start_bj.tzinfo)
+    def in_window(it):
+        return start_bj <= (bj(it.get('publishedAt')) or min_dt) < end_bj
     # 客户端兜底：严格落在窗口内
-    items = [it for it in data.get('items', [])
-             if start_bj <= (bj(it.get('publishedAt')) or min_dt) < end_bj]
+    core = [it for it in data.get('items', []) if in_window(it)]
     # 按发布时间倒序
-    items.sort(key=lambda it: bj(it.get('publishedAt')) or min_dt, reverse=True)
+    core.sort(key=lambda it: bj(it.get('publishedAt')) or min_dt, reverse=True)
+    selected_n = len(core)
+    items = core
+    note = ''
+    # 阈值兜底：精选不足时回退 mode=all，补充同窗内未精选条目
+    if len(core) < FALLBACK_THRESHOLD:
+        try:
+            fb = pull(since_iso, FALLBACK_MODE)
+        except Exception:
+            fb = {'items': []}
+        merged = list(core)
+        seen_ids = {it.get('id') or it.get('url') for it in core}
+        for it in fb.get('items', []):
+            if not in_window(it):
+                continue
+            kid = it.get('id') or it.get('url') or ''
+            if not kid or kid in seen_ids:
+                continue
+            merged.append(it)
+            seen_ids.add(kid)
+        merged.sort(key=lambda it: bj(it.get('publishedAt')) or min_dt, reverse=True)
+        if len(merged) > FALLBACK_CAP:
+            merged = merged[:FALLBACK_CAP]
+        if len(merged) > len(core):
+            items = merged
+            note = f"精选 {selected_n} 条 · 兜底补充 {len(merged) - len(core)} 条"
     # 跨天去重：仅与「此前各日期」已收录的 id 比对（当前日期不去重自己，保证可重跑幂等）
     seen = load_seen()
     prev_seen = set()
@@ -296,7 +347,7 @@ def main():
     items = kept
     win_str = f'北京时间 {start_bj.strftime("%Y-%m-%d")} 08:00 – {end_bj.strftime("%Y-%m-%d")} 08:00 精选'
     with open(os.path.join(ARCHIVE, f'{date_str}.html'), 'w', encoding='utf-8') as f:
-        f.write(gen_report(items, date_str, win_str))
+        f.write(gen_report(items, date_str, win_str, note))
     # 记录当日去重指纹
     seen[date_str] = list(local)
     save_seen(seen)
