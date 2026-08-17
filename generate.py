@@ -30,6 +30,131 @@ FALLBACK_THRESHOLD = 5     # 精选不足此数时，回退 mode=all 补充同�
 FALLBACK_MODE = 'all'
 FALLBACK_CAP = 30          # 兜底后条目总数上限（按时间倒序截断）
 
+# ── 每日简报页 CSS（抽离为常量，便于热替换且不影响内容）──
+REPORT_STYLE = """
+  :root {
+    --bg:#ffffff; --bg2:#f8fafc; --card:#ffffff; --border:#e7e7ea;
+    --text:#18181b; --muted:#52525b; --faint:#a1a1aa; --accent:#6366f1;
+    --shadow:0 1px 3px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.04);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg:#0c0c0f; --bg2:#141418; --card:#16161a; --border:#26262c;
+      --text:#f4f4f5; --muted:#a1a1aa; --faint:#71717a; --accent:#818cf8;
+      --shadow:0 1px 3px rgba(0,0,0,.4);
+    }
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;
+    background:var(--bg); color:var(--text); line-height:1.6; -webkit-font-smoothing:antialiased; padding:32px 16px 64px; }
+  .wrap { max-width:860px; margin:0 auto; }
+  header { background:var(--bg2); border:1px solid var(--border); border-radius:12px;
+    padding:16px 20px; margin-bottom:24px; box-shadow:var(--shadow); }
+  header h1 { font-size:18px; font-weight:700; letter-spacing:.3px; }
+  header .sub { margin-top:6px; font-size:13px; color:var(--muted); }
+  header .win { margin-top:4px; font-size:12px; color:var(--faint); font-family:"SF Mono",ui-monospace,monospace; }
+  .sec { margin-bottom:30px; }
+  .sec-head { display:flex; align-items:center; gap:10px; margin-bottom:14px; padding-bottom:8px; border-bottom:2px solid var(--border); }
+  .badge { width:10px; height:22px; border-radius:4px; display:inline-block; }
+  .sec-head h2 { font-size:18px; font-weight:700; flex:1; }
+  .sec-count { font-size:13px; color:var(--faint); font-family:"SF Mono",ui-monospace,monospace;
+    background:var(--bg2); padding:2px 10px; border-radius:99px; border:1px solid var(--border); }
+  .cards { display:flex; flex-direction:column; gap:12px; }
+  .card { display:flex; gap:14px; background:var(--card); border:1px solid var(--border); border-radius:12px;
+    padding:16px 18px; box-shadow:var(--shadow); transition:transform .15s ease,border-color .15s ease; }
+  .card:hover { transform:translateY(-2px); border-color:var(--accent); }
+  .num { flex:none; width:30px; height:30px; border-radius:8px; background:var(--bg2); border:1px solid var(--border);
+    color:var(--accent); font-weight:700; font-size:14px; display:flex; align-items:center; justify-content:center;
+    font-family:"SF Mono",ui-monospace,monospace; }
+  .card-body { flex:1; min-width:0; }
+  .title { font-size:16px; font-weight:650; color:var(--text); text-decoration:none; line-height:1.45; overflow-wrap:anywhere; }
+  .title:hover { color:var(--accent); text-decoration:underline; }
+  .meta { margin-top:6px; font-size:12.5px; color:var(--muted); display:flex; align-items:center; gap:7px; flex-wrap:wrap; }
+  .source { font-weight:600; }
+  .dot { color:var(--faint); }
+  .time { color:var(--faint); font-family:"SF Mono",ui-monospace,monospace; }
+  .summary { margin-top:8px; font-size:14px; color:var(--muted); overflow-wrap:break-word; }
+  footer { margin-top:40px; text-align:center; font-size:12.5px; color:var(--faint); }
+  footer a { color:var(--accent); text-decoration:none; }
+  footer a:hover { text-decoration:underline; }
+  @media (max-width:640px) {
+    body { padding:18px 12px 44px; }
+    .wrap { max-width:100%; }
+    header { padding:13px 15px; margin-bottom:18px; }
+    header h1 { font-size:16px; }
+    header .sub { font-size:12px; margin-top:5px; }
+    header .win { font-size:11px; }
+    .sec { margin-bottom:22px; }
+    .sec-head { margin-bottom:11px; gap:8px; }
+    .badge { width:8px; height:18px; }
+    .sec-head h2 { font-size:16px; }
+    .sec-count { font-size:12px; padding:2px 8px; }
+    .cards { gap:10px; }
+    .card { padding:13px 14px; gap:10px; }
+    .num { width:24px; height:24px; font-size:12px; border-radius:6px; }
+    .title { font-size:15.5px; line-height:1.4; }
+    .meta { font-size:12px; gap:6px; margin-top:5px; }
+    .summary { font-size:14px; margin-top:6px; }
+  }
+"""
+
+# ── 归档目录页 CSS ──
+INDEX_STYLE = """
+  :root {
+    --bg:#ffffff; --bg2:#f8fafc; --card:#ffffff; --border:#e7e7ea;
+    --text:#18181b; --muted:#52525b; --faint:#a1a1aa; --accent:#6366f1;
+    --shadow:0 1px 3px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.04);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg:#0c0c0f; --bg2:#141418; --card:#16161a; --border:#26262c;
+      --text:#f4f4f5; --muted:#a1a1aa; --faint:#71717a; --accent:#818cf8;
+      --shadow:0 1px 3px rgba(0,0,0,.4);
+    }
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;
+    background:var(--bg); color:var(--text); line-height:1.6; -webkit-font-smoothing:antialiased; padding:24px 16px; }
+  .wrap { max-width:1200px; margin:0 auto; }
+  header { background:linear-gradient(135deg,var(--accent),#8b5cf6); color:#fff; border-radius:16px;
+    padding:22px 26px; margin-bottom:20px; box-shadow:var(--shadow); }
+  header h1 { font-size:24px; font-weight:800; }
+  header .sub { margin-top:6px; font-size:13.5px; opacity:.92; }
+  main { display:flex; gap:18px; align-items:flex-start; }
+  .viewer-wrap { flex:1; min-width:0; }
+  iframe { width:100%; height:82vh; border:1px solid var(--border); border-radius:12px; background:var(--card);
+    box-shadow:var(--shadow); }
+  aside { width:280px; flex:none; background:var(--card); border:1px solid var(--border); border-radius:12px;
+    box-shadow:var(--shadow); padding:14px; position:sticky; top:24px; max-height:82vh; overflow:auto; }
+  .aside-head { font-size:13px; font-weight:700; color:var(--faint); text-transform:uppercase;
+    letter-spacing:.5px; margin-bottom:10px; }
+  ul { list-style:none; display:flex; flex-direction:column; gap:4px; }
+  li a { display:block; padding:9px 12px; border-radius:8px; text-decoration:none; color:var(--text);
+    font-size:14px; border:1px solid transparent; transition:all .12s ease; }
+  li a:hover { background:var(--bg2); }
+  li a.active { background:var(--accent); color:#fff; font-weight:600; }
+  li a .c { float:right; color:var(--faint); font-family:"SF Mono",ui-monospace,monospace; font-size:12px; }
+  li a.active .c { color:rgba(255,255,255,.85); }
+  li a .t { font-size:11px; color:var(--accent); margin-left:6px; }
+  li a.active .t { color:#fff; }
+  @media (max-width:820px) {
+    body { padding:16px 12px; }
+    header { padding:16px 18px; }
+    header h1 { font-size:20px; }
+    main { flex-direction:column; gap:12px; }
+    .viewer-wrap { order:2; }
+    aside { order:1; width:100%; position:sticky; top:0; z-index:20; max-height:none;
+      overflow-x:auto; overflow-y:hidden; padding:10px 12px; -webkit-overflow-scrolling:touch;
+      background:var(--bg); border-radius:10px; box-shadow:var(--shadow); }
+    .aside-head { display:none; }
+    ul { flex-direction:row; flex-wrap:nowrap; gap:6px; }
+    li { flex:none; }
+    li a { white-space:nowrap; padding:7px 12px; }
+    li a .c { float:none; margin-left:6px; }
+    iframe { height:78vh; }
+  }
+"""
+
 def bj(dtstr):
     if not dtstr:
         return None
@@ -125,53 +250,7 @@ def gen_report(items, date_str, win_str='', note=''):
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AI HOT 速递 · {date_str}</title>
-<style>
-  :root {{
-    --bg:#ffffff; --bg2:#f8fafc; --card:#ffffff; --border:#e7e7ea;
-    --text:#18181b; --muted:#52525b; --faint:#a1a1aa; --accent:#6366f1;
-    --shadow:0 1px 3px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.04);
-  }}
-  @media (prefers-color-scheme: dark) {{
-    :root {{
-      --bg:#0c0c0f; --bg2:#141418; --card:#16161a; --border:#26262c;
-      --text:#f4f4f5; --muted:#a1a1aa; --faint:#71717a; --accent:#818cf8;
-      --shadow:0 1px 3px rgba(0,0,0,.4);
-    }}
-  }}
-  * {{ box-sizing:border-box; margin:0; padding:0; }}
-  body {{ font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;
-    background:var(--bg); color:var(--text); line-height:1.6; -webkit-font-smoothing:antialiased; padding:32px 16px 64px; }}
-  .wrap {{ max-width:860px; margin:0 auto; }}
-  header {{ background:var(--bg2); border:1px solid var(--border); border-radius:12px;
-    padding:16px 20px; margin-bottom:24px; box-shadow:var(--shadow); }}
-  header h1 {{ font-size:18px; font-weight:700; letter-spacing:.3px; }}
-  header .sub {{ margin-top:6px; font-size:13px; color:var(--muted); }}
-  header .win {{ margin-top:4px; font-size:12px; color:var(--faint); font-family:"SF Mono",ui-monospace,monospace; }}
-  .sec {{ margin-bottom:30px; }}
-  .sec-head {{ display:flex; align-items:center; gap:10px; margin-bottom:14px; padding-bottom:8px; border-bottom:2px solid var(--border); }}
-  .badge {{ width:10px; height:22px; border-radius:4px; display:inline-block; }}
-  .sec-head h2 {{ font-size:18px; font-weight:700; flex:1; }}
-  .sec-count {{ font-size:13px; color:var(--faint); font-family:"SF Mono",ui-monospace,monospace;
-    background:var(--bg2); padding:2px 10px; border-radius:99px; border:1px solid var(--border); }}
-  .cards {{ display:flex; flex-direction:column; gap:12px; }}
-  .card {{ display:flex; gap:14px; background:var(--card); border:1px solid var(--border); border-radius:12px;
-    padding:16px 18px; box-shadow:var(--shadow); transition:transform .15s ease,border-color .15s ease; }}
-  .card:hover {{ transform:translateY(-2px); border-color:var(--accent); }}
-  .num {{ flex:none; width:30px; height:30px; border-radius:8px; background:var(--bg2); border:1px solid var(--border);
-    color:var(--accent); font-weight:700; font-size:14px; display:flex; align-items:center; justify-content:center;
-    font-family:"SF Mono",ui-monospace,monospace; }}
-  .card-body {{ flex:1; min-width:0; }}
-  .title {{ font-size:16px; font-weight:650; color:var(--text); text-decoration:none; line-height:1.45; }}
-  .title:hover {{ color:var(--accent); text-decoration:underline; }}
-  .meta {{ margin-top:6px; font-size:12.5px; color:var(--muted); display:flex; align-items:center; gap:7px; flex-wrap:wrap; }}
-  .source {{ font-weight:600; }}
-  .dot {{ color:var(--faint); }}
-  .time {{ color:var(--faint); font-family:"SF Mono",ui-monospace,monospace; }}
-  .summary {{ margin-top:8px; font-size:14px; color:var(--muted); }}
-  footer {{ margin-top:40px; text-align:center; font-size:12.5px; color:var(--faint); }}
-  footer a {{ color:var(--accent); text-decoration:none; }}
-  footer a:hover {{ text-decoration:underline; }}
-</style>
+<style>{REPORT_STYLE}</style>
 </head>
 <body>
 <div class="wrap">
@@ -194,50 +273,7 @@ def gen_index(manifest):
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AI HOT 速递 · 归档</title>
-<style>
-  :root {{
-    --bg:#ffffff; --bg2:#f8fafc; --card:#ffffff; --border:#e7e7ea;
-    --text:#18181b; --muted:#52525b; --faint:#a1a1aa; --accent:#6366f1;
-    --shadow:0 1px 3px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.04);
-  }}
-  @media (prefers-color-scheme: dark) {{
-    :root {{
-      --bg:#0c0c0f; --bg2:#141418; --card:#16161a; --border:#26262c;
-      --text:#f4f4f5; --muted:#a1a1aa; --faint:#71717a; --accent:#818cf8;
-      --shadow:0 1px 3px rgba(0,0,0,.4);
-    }}
-  }}
-  * {{ box-sizing:border-box; margin:0; padding:0; }}
-  body {{ font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;
-    background:var(--bg); color:var(--text); line-height:1.6; -webkit-font-smoothing:antialiased; padding:24px 16px; }}
-  .wrap {{ max-width:1200px; margin:0 auto; }}
-  header {{ background:linear-gradient(135deg,var(--accent),#8b5cf6); color:#fff; border-radius:16px;
-    padding:22px 26px; margin-bottom:20px; box-shadow:var(--shadow); }}
-  header h1 {{ font-size:24px; font-weight:800; }}
-  header .sub {{ margin-top:6px; font-size:13.5px; opacity:.92; }}
-  main {{ display:flex; gap:18px; align-items:flex-start; }}
-  .viewer-wrap {{ flex:1; min-width:0; }}
-  iframe {{ width:100%; height:82vh; border:1px solid var(--border); border-radius:12px; background:var(--card);
-    box-shadow:var(--shadow); }}
-  aside {{ width:280px; flex:none; background:var(--card); border:1px solid var(--border); border-radius:12px;
-    box-shadow:var(--shadow); padding:14px; position:sticky; top:24px; max-height:82vh; overflow:auto; }}
-  .aside-head {{ font-size:13px; font-weight:700; color:var(--faint); text-transform:uppercase;
-    letter-spacing:.5px; margin-bottom:10px; }}
-  ul {{ list-style:none; display:flex; flex-direction:column; gap:4px; }}
-  li a {{ display:block; padding:9px 12px; border-radius:8px; text-decoration:none; color:var(--text);
-    font-size:14px; border:1px solid transparent; transition:all .12s ease; }}
-  li a:hover {{ background:var(--bg2); }}
-  li a.active {{ background:var(--accent); color:#fff; font-weight:600; }}
-  li a .c {{ float:right; color:var(--faint); font-family:"SF Mono",ui-monospace,monospace; font-size:12px; }}
-  li a.active .c {{ color:rgba(255,255,255,.85); }}
-  li a .t {{ font-size:11px; color:var(--accent); margin-left:6px; }}
-  li a.active .t {{ color:#fff; }}
-  @media (max-width:820px) {{
-    main {{ flex-direction:column; }}
-    aside {{ width:100%; position:static; max-height:none; }}
-    iframe {{ height:70vh; }}
-  }}
-</style>
+<style>{INDEX_STYLE}</style>
 </head>
 <body>
 <div class="wrap">

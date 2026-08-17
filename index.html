@@ -43,9 +43,20 @@
   li a .t { font-size:11px; color:var(--accent); margin-left:6px; }
   li a.active .t { color:#fff; }
   @media (max-width:820px) {
-    main { flex-direction:column; }
-    aside { width:100%; position:static; max-height:none; }
-    iframe { height:70vh; }
+    body { padding:16px 12px; }
+    header { padding:16px 18px; }
+    header h1 { font-size:20px; }
+    main { flex-direction:column; gap:12px; }
+    .viewer-wrap { order:2; }
+    aside { order:1; width:100%; position:sticky; top:0; z-index:20; max-height:none;
+      overflow-x:auto; overflow-y:hidden; padding:10px 12px; -webkit-overflow-scrolling:touch;
+      background:var(--bg); border-radius:10px; box-shadow:var(--shadow); }
+    .aside-head { display:none; }
+    ul { flex-direction:row; flex-wrap:nowrap; gap:6px; }
+    li { flex:none; }
+    li a { white-space:nowrap; padding:7px 12px; }
+    li a .c { float:none; margin-left:6px; }
+    iframe { height:78vh; }
   }
 </style>
 </head>
