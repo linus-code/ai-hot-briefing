@@ -6,7 +6,7 @@ AI HOT 每日简报生成器
 - 更新 archive/manifest.json（所有日期倒序索引）
 - 重新生成 index.html 目录页（内联 MANIFEST，默认展示最新一期，支持历史切换）
 """
-import json, html, datetime, os, subprocess, sys
+import json, html, datetime, os, subprocess, sys, time
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 ARCHIVE = os.path.join(BASE, 'archive')
@@ -176,11 +176,36 @@ def human(dt):
         return f'昨天 {dt.strftime("%H:%M")}'
     return dt.strftime('%m/%d %H:%M')
 
-def pull(since_iso, mode='selected'):
+def pull(since_iso, mode='selected', retries=2):
+    """拉取 aihot 接口；网络/解析失败时抛出清晰错误而非裸 JSONDecodeError。
+    内置单次退避重试以吸收瞬断（DNS 抖动等），全部失败才上抛。"""
     url = API.format(mode=mode, since=since_iso)
-    out = subprocess.run(['curl', '-s', '-H', f'User-Agent: {UA}', url],
-                         capture_output=True, text=True, timeout=60).stdout
-    return json.loads(out)
+    last_err = None
+    for attempt in range(1, retries + 1):
+        try:
+            proc = subprocess.run(
+                ['curl', '-fsS', '--connect-timeout', '15', '--max-time', '60',
+                 '-H', f'User-Agent: {UA}', url],
+                capture_output=True, text=True, timeout=80)
+            if proc.returncode != 0:
+                err = proc.stderr.strip() or '（HTTP/网络错误）'
+                raise RuntimeError(f"curl 退出码 {proc.returncode}：{err}")
+            out = (proc.stdout or '').strip()
+            if not out:
+                raise ValueError("接口返回空响应体")
+            try:
+                data = json.loads(out)
+            except json.JSONDecodeError as e:
+                raise ValueError(f"响应非合法 JSON（{e}），前 120 字符：{out[:120]!r}")
+            if not isinstance(data, dict) or 'items' not in data:
+                raise ValueError(f"响应结构异常：缺少 items 字段，前 120 字符：{out[:120]!r}")
+            return data
+        except Exception as e:
+            last_err = e
+            if attempt < retries:
+                time.sleep(3 * attempt)  # 3s / 6s 退避后重试
+                continue
+    raise RuntimeError(f"拉取 aihot 失败（mode={mode}，已重试 {retries} 次）：{last_err}")
 
 def render_card(it, n):
     title = html.escape(it.get('title') or it.get('title_en') or '(无标题)')
@@ -344,7 +369,11 @@ def main():
     end_bj = bj_now.replace(hour=8, minute=0, second=0, microsecond=0)
     start_bj = end_bj - datetime.timedelta(hours=24)
     since_iso = start_bj.astimezone(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
-    data = pull(since_iso, 'selected')
+    try:
+        data = pull(since_iso, 'selected')
+    except Exception as e:
+        sys.stderr.write(f"[ai-hot] 生成中止：{e}\n")
+        sys.exit(2)
     min_dt = datetime.datetime.min.replace(tzinfo=start_bj.tzinfo)
     def in_window(it):
         return start_bj <= (bj(it.get('publishedAt')) or min_dt) < end_bj
@@ -392,6 +421,9 @@ def main():
         local.add(kid)
     items = kept
     win_str = f'北京时间 {start_bj.strftime("%Y-%m-%d")} 08:00 – {end_bj.strftime("%Y-%m-%d")} 08:00 精选'
+    if not items:
+        print(f"SKIP date={date_str} items=0（窗口内无内容，跳过生成与推送）")
+        sys.exit(0)
     with open(os.path.join(ARCHIVE, f'{date_str}.html'), 'w', encoding='utf-8') as f:
         f.write(gen_report(items, date_str, win_str, note))
     # 记录当日去重指纹
