@@ -363,10 +363,25 @@ def save_seen(seen):
 
 def main():
     os.makedirs(ARCHIVE, exist_ok=True)
+    # 可选参数 --date YYYY-MM-DD：回填指定日期（窗口仍按"该日 08:00 截止"计算）
+    target = None
+    if '--date' in sys.argv:
+        i = sys.argv.index('--date') + 1
+        if i < len(sys.argv):
+            try:
+                target = datetime.datetime.strptime(sys.argv[i], '%Y-%m-%d').date()
+            except ValueError:
+                sys.stderr.write(f"[ai-hot] 非法 --date 参数：{sys.argv[i]}\n")
+                sys.exit(2)
     bj_now = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=8)))
-    date_str = bj_now.strftime('%Y-%m-%d')
-    # 固定窗口：北京时间 昨日 08:00 ~ 当日 08:00
-    end_bj = bj_now.replace(hour=8, minute=0, second=0, microsecond=0)
+    if target:
+        # 以指定日期的 08:00 作为窗口终点（北京时间）
+        end_bj = bj_now.replace(year=target.year, month=target.month, day=target.day,
+                                hour=8, minute=0, second=0, microsecond=0)
+    else:
+        end_bj = bj_now.replace(hour=8, minute=0, second=0, microsecond=0)
+    date_str = end_bj.strftime('%Y-%m-%d')
+    # 固定窗口：窗口终点当日 08:00 ~ 前一日 08:00（北京时间）
     start_bj = end_bj - datetime.timedelta(hours=24)
     since_iso = start_bj.astimezone(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
     try:
