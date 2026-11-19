@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
 """
 AI HOT 每日简报生成器
-- 拉取 aihot.virxact.com 最近 24 小时精选
+- 拉取 aihot.news /api/v1（旧 /api/public/* 已于 2026-10-31 停服）
+- 7d 窗口覆盖拉取后按 publishedAt 收窄到当日 24h 窗口
 - 生成 archive/<YYYY-MM-DD>.html 当日简报
 - 更新 archive/manifest.json（所有日期倒序索引）
 - 重新生成 index.html 目录页（内联 MANIFEST，默认展示最新一期，支持历史切换）
 """
-import json, html, datetime, os, subprocess, sys, time
+import json, html, datetime, os, subprocess, sys, time, urllib.parse
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 ARCHIVE = os.path.join(BASE, 'archive')
@@ -14,15 +15,20 @@ MANIFEST = os.path.join(ARCHIVE, 'manifest.json')
 SEEN = os.path.join(ARCHIVE, 'seen.json')
 INDEX = os.path.join(BASE, 'index.html')
 
-UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-API = "https://aihot.virxact.com/api/public/items?mode={mode}&since={since}&take=50"
+UA = "aihot-api/2.0.0"   # 官方要求：勿伪装浏览器 UA，勿绕过边缘安全规则
+API = "https://aihot.news/api/v1/items?mode={mode}&window={window}&limit={limit}"
+FETCH_WINDOW = '7d'                    # v1 仅支持 24h/7d：用 7d 覆盖目标 24h 窗口，再按 publishedAt 收窄
+PAGE_LIMIT = 100                       # 单页条数
+MAX_PAGES = {'selected': 5, 'all': 4}  # 翻页上限，防失控
+FETCH_CAP = {'selected': 500, 'all': 400}  # 累计拉取条数上限
 
 CAT_CONFIG = [
     ('ai-models',   '模型发布 / 更新', '#6366f1'),
     ('ai-products', '产品发布 / 更新', '#0ea5e9'),
     ('industry',    '行业动态',       '#f59e0b'),
     ('paper',       '论文研究',       '#10b981'),
-    ('tip',         '技巧与 观点',    '#ec4899'),
+    ('tip',         '技巧 / 教程',    '#ec4899'),
+    ('opinion',     '观点',           '#a855f7'),
 ]
 OTHER_LABEL = '其他 / 未分类'
 OTHER_COLOR = '#71717a'
@@ -176,30 +182,41 @@ def human(dt):
         return f'昨天 {dt.strftime("%H:%M")}'
     return dt.strftime('%m/%d %H:%M')
 
-def pull(since_iso, mode='selected', retries=2):
-    """拉取 aihot 接口；网络/解析失败时抛出清晰错误而非裸 JSONDecodeError。
-    内置单次退避重试以吸收瞬断（DNS 抖动等），全部失败才上抛。"""
-    url = API.format(mode=mode, since=since_iso)
+def pull(mode='selected', retries=2):
+    """拉取 aihot v1 接口：window=7d 覆盖 + 客户端按 publishedAt 收窄。
+    自动跟随 page.nextCursor 翻页（上限 MAX_PAGES/FETCH_CAP）；
+    网络/解析失败时抛出清晰错误而非裸 JSONDecodeError，内置退避重试。"""
     last_err = None
     for attempt in range(1, retries + 1):
         try:
-            proc = subprocess.run(
-                ['curl', '-fsS', '--connect-timeout', '15', '--max-time', '60',
-                 '-H', f'User-Agent: {UA}', url],
-                capture_output=True, text=True, timeout=80)
-            if proc.returncode != 0:
-                err = proc.stderr.strip() or '（HTTP/网络错误）'
-                raise RuntimeError(f"curl 退出码 {proc.returncode}：{err}")
-            out = (proc.stdout or '').strip()
-            if not out:
-                raise ValueError("接口返回空响应体")
-            try:
-                data = json.loads(out)
-            except json.JSONDecodeError as e:
-                raise ValueError(f"响应非合法 JSON（{e}），前 120 字符：{out[:120]!r}")
-            if not isinstance(data, dict) or 'items' not in data:
-                raise ValueError(f"响应结构异常：缺少 items 字段，前 120 字符：{out[:120]!r}")
-            return data
+            all_items, cursor, pages = [], None, 0
+            while pages < MAX_PAGES.get(mode, 3) and len(all_items) < FETCH_CAP.get(mode, 400):
+                url = API.format(mode=mode, window=FETCH_WINDOW, limit=PAGE_LIMIT)
+                if cursor:
+                    url += '&cursor=' + urllib.parse.quote(cursor)
+                proc = subprocess.run(
+                    ['curl', '-fsSL', '--compressed', '--connect-timeout', '15', '--max-time', '90',
+                     '-H', f'User-Agent: {UA}', url],
+                    capture_output=True, text=True, timeout=110)
+                if proc.returncode != 0:
+                    err = proc.stderr.strip() or '（HTTP/网络错误）'
+                    raise RuntimeError(f"curl 退出码 {proc.returncode}：{err}")
+                out = (proc.stdout or '').strip()
+                if not out:
+                    raise ValueError("接口返回空响应体")
+                try:
+                    data = json.loads(out)
+                except json.JSONDecodeError as e:
+                    raise ValueError(f"响应非合法 JSON（{e}），前 120 字符：{out[:120]!r}")
+                if not isinstance(data, dict) or 'items' not in data or 'page' not in data:
+                    raise ValueError(f"响应结构异常：缺少 items/page 字段，前 160 字符：{out[:160]!r}")
+                all_items.extend(data.get('items') or [])
+                page = data.get('page') or {}
+                cursor = page.get('nextCursor')
+                pages += 1
+                if not page.get('hasMore') or not cursor:
+                    break
+            return {'items': all_items}
         except Exception as e:
             last_err = e
             if attempt < retries:
@@ -208,9 +225,11 @@ def pull(since_iso, mode='selected', retries=2):
     raise RuntimeError(f"拉取 aihot 失败（mode={mode}，已重试 {retries} 次）：{last_err}")
 
 def render_card(it, n):
-    title = html.escape(it.get('title') or it.get('title_en') or '(无标题)')
-    url = html.escape(it.get('url') or '#')
-    source = html.escape(it.get('source') or '未知来源')
+    links = it.get('links') or {}
+    title = html.escape(it.get('title') or it.get('originalTitle') or '(无标题)')
+    url = html.escape(links.get('original') or links.get('aihot') or '#')
+    src = it.get('source')
+    source = html.escape(src.get('name') if isinstance(src, dict) else (src or '未知来源'))
     summary = html.escape(it.get('summary') or '')
     dt = bj(it.get('publishedAt'))
     rel = human(dt)
@@ -285,7 +304,7 @@ def gen_report(items, date_str, win_str='', note=''):
     <div class="win">生成于 {gen_time}</div>
   </header>
   {sections}
-  <footer>数据来源 <a href="https://aihot.virxact.com" target="_blank" rel="noopener noreferrer">aihot.virxact.com</a></footer>
+  <footer>数据来源 <a href="https://aihot.news" target="_blank" rel="noopener noreferrer">aihot.news</a></footer>
 </div>
 </body>
 </html>'''
@@ -383,9 +402,8 @@ def main():
     date_str = end_bj.strftime('%Y-%m-%d')
     # 固定窗口：窗口终点当日 08:00 ~ 前一日 08:00（北京时间）
     start_bj = end_bj - datetime.timedelta(hours=24)
-    since_iso = start_bj.astimezone(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
     try:
-        data = pull(since_iso, 'selected')
+        data = pull('selected')
     except Exception as e:
         sys.stderr.write(f"[ai-hot] 生成中止：{e}\n")
         sys.exit(2)
@@ -402,7 +420,7 @@ def main():
     # 阈值兜底：精选不足时回退 mode=all，补充同窗内未精选条目
     if len(core) < FALLBACK_THRESHOLD:
         try:
-            fb = pull(since_iso, FALLBACK_MODE)
+            fb = pull(FALLBACK_MODE)
         except Exception:
             fb = {'items': []}
         merged = list(core)
