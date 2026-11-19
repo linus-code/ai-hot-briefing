@@ -57,7 +57,7 @@ fi
 
 # ── 3) 镜像同步到站点目录（目录可写才执行，否则跳过）────────
 if [ -d "$PUB_DIR" ] && [ -w "$PUB_DIR" ]; then
-  if rsync -a --delete --exclude='.git/' --exclude='DEPLOY.md' --exclude='push_err.log' ./ "$PUB_DIR"/; then
+  if rsync -a --delete --exclude='.git/' --exclude='DEPLOY.md' --exclude='push_err.log' --exclude='__pycache__/' ./ "$PUB_DIR"/; then
     echo "mirrored to $PUB_DIR"
   else
     echo "mirror failed: rsync 同步 $PUB_DIR 出错"
