@@ -34,15 +34,22 @@ else
     PUSH_URL="https://x-access-token:${TOKEN}@github.com/linus-code/ai-hot-briefing.git"
   fi
 
-  PUSH_ERR=$(git push "$PUSH_URL" "HEAD:${BRANCH}" 2>&1)
-  if [ $? -eq 0 ]; then
+  # 网络出口：直连 GitHub 国际链路不稳定（TLS 传输中途被断）。
+  # 本机 127.0.0.1:7890 有 Clash 代理时自动经代理推送，否则回退直连。
+  GIT_PROXY=()
+  if (echo > /dev/tcp/127.0.0.1/7890) 2>/dev/null; then
+    GIT_PROXY=(-c http.proxy=http://127.0.0.1:7890)
+  fi
+  # lowSpeed*：传输停滞（<1KB/s 持续 20s）时快速失败，timeout 90 兜底
+  PUSH_ERR=$(timeout 90 git "${GIT_PROXY[@]}" -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=20 push "$PUSH_URL" "HEAD:${BRANCH}" 2>&1); RC=$?
+  if [ $RC -eq 0 ]; then
     echo "pushed."
   else
     git reset --soft "HEAD~1"   # 回退提交，保留改动，下次有凭证后再推
     if [ -z "$TOKEN" ]; then
       echo "push skipped: 未配置 GitHub 凭证（gh 未安装/未认证，且无 ~/.config/ai-hot/github_token），本次提交已暂存待推"
     else
-      echo "push failed: 凭证无效或网络异常，本次提交已暂存待推。错误摘要："
+      echo "push failed (rc=$RC): 凭证无效或网络异常，本次提交已暂存待推。错误摘要："
       echo "$PUSH_ERR" | tail -2
     fi
   fi
